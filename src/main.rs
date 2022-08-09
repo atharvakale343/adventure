@@ -3,69 +3,92 @@ mod help_menus;
 use help_menus as menu;
 use rand::Rng;
 use std::cell::RefCell;
+use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
-trait NameAsNew{
-    fn new(_: String) -> Self;
-}
 #[derive(Debug)]
 struct Board {
-    rooms: Vec<Vec<Box<Room>>>,
+    rooms: Vec<Vec<Rc<RefCell<Room>>>>,
 }
 #[derive(Debug)]
 struct Game {
     board: Board,
-    avatar: Character,
-    game_items: Vec<Item>,
-    npcs: Vec<Character>,
-    inventory: Option<Vec<Item>>,
-    current_room: Option<Rc<Room>>,
+    avatar: Entity,
+    game_items: Vec<Rc<RefCell<Entity>>>,
+    npcs: Vec<Rc<RefCell<Entity>>>,
+    inventory: Option<Vec<Rc<RefCell<Entity>>>>,
+    current_room: Option<Rc<RefCell<Room>>>,
 }
 
 impl Game {
-    fn set_current_room(&mut self, current_room: Room) {
-        self.current_room = Some(Rc::new(current_room));
+    fn set_current_room(&mut self, current_room: &Rc<RefCell<Room>>) {
+        self.current_room = Some(Rc::clone(current_room));
     }
 }
 
 #[derive(Debug)]
-struct Item {
+struct Entity {
     name: String,
 }
 
-impl NameAsNew for Item {
+impl Entity {
     fn new(name: String) -> Self {
         Self { name }
     }
 }
 
-#[derive(Debug)]
-struct Character {
+
+struct Room {
     name: String,
+    North: Option<Rc<RefCell<Room>>>,
+    South: Option<Rc<RefCell<Room>>>,
+    East: Option<Rc<RefCell<Room>>>,
+    West: Option<Rc<RefCell<Room>>>,
+    item_list: Option<Vec<Rc<RefCell<Entity>>>>,
+    character_list: Option<Vec<Rc<RefCell<Entity>>>>,
 }
 
-impl NameAsNew for Character {
-    fn new(name: String) -> Self {
-        Self { name }
+impl fmt::Debug for Room {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let north = match self.North.as_ref() {
+            Some(r) => {
+                (r.borrow().name.clone())
+            },
+            None => "None".to_owned(),
+        };
+        let south = match self.South.as_ref() {
+            Some(r) => {
+                (r.borrow().name.clone())
+            },
+            None => "None".to_owned(),
+        };
+        let east = match self.East.as_ref() {
+            Some(r) => {
+                (r.borrow().name.clone())
+            },
+            None => "None".to_owned(),
+        };
+        let west = match self.West.as_ref() {
+            Some(r) => {
+                (r.borrow().name.clone())
+            },
+            None => "None".to_owned(),
+        };
+        write!(f, "Name: {} | North: {} | South: {} | East: {} | West: {} |", self.name, north, south, east, west)
     }
-}
-#[derive(Debug)]
-struct Room<'a> {
-    name: String,
-    North: Option<Rc<&'a Room<'a>>>,
-    South: Option<Rc<&'a Room<'a>>>,
-    East: Option<Rc<&'a Room<'a>>>,
-    West: Option<Rc<&'a Room<'a>>>,
-    item_list: Option<Vec<Item>>,
-    character_list: Option<Vec<Character>>,
 }
 
 #[derive(Debug)]
 struct Solution {
     room: Room,
-    item: Item,
-    character: Character,
+    item: Entity,
+    character: Entity,
 }
 
 fn get_user_input(buffer: &mut String) -> &str {
@@ -103,7 +126,9 @@ fn main() {
         board: Board {
             rooms: construct_board(),
         },
-        avatar: Character { name: "You".to_owned() },
+        avatar: Entity {
+            name: "You".to_owned(),
+        },
         game_items: create_game_items(),
         npcs: create_npcs(),
         inventory: None,
@@ -112,23 +137,26 @@ fn main() {
     println!("{:#?}", game);
 }
 
-fn create_npcs() -> Vec<Character> {
-    let npc_names = vec!["Katie".to_owned(), "Harry".to_owned(), "Peter".to_owned(), "Savanah".to_owned(), "Lexi".to_owned()];
+fn create_npcs() -> Vec<Rc<RefCell<Entity>>> {
+    let npc_names = vec![
+        "Katie".to_owned(),
+        "Harry".to_owned(),
+        "Peter".to_owned(),
+        "Savanah".to_owned(),
+        "Lexi".to_owned(),
+    ];
     construct_list(npc_names)
 }
 
-fn construct_list<'a, T>(names: Vec<String>) -> Vec<T>
-where
-    T: NameAsNew,
-{
+fn construct_list(names: Vec<String>) -> Vec<Rc<RefCell<Entity>>> {
     let mut list = Vec::new();
     for name in names {
-        list.push(T::new(name));
+        list.push(Rc::new(RefCell::new(Entity::new(name))));
     }
     list
 }
 
-fn create_game_items() -> Vec<Item> {
+fn create_game_items() -> Vec<Rc<RefCell<Entity>>> {
     let game_names = vec![
         "Rubber Ducky".to_owned(),
         "Hairdryer".to_owned(),
@@ -140,7 +168,7 @@ fn create_game_items() -> Vec<Item> {
     construct_list(game_names)
 }
 
-fn construct_board() -> Vec<Vec<Box<Room>>> {
+fn construct_board() -> Vec<Vec<Rc<RefCell<Room>>>> {
     let room_names: Vec<String> = vec![
         "Drawing Room".to_owned(),
         "Backyard".to_owned(),
@@ -161,7 +189,7 @@ fn construct_board() -> Vec<Vec<Box<Room>>> {
     for i in 0..rt {
         let mut rooms = Vec::new();
         for j in 0..rt {
-            let new_room = Box::new(Room {
+            let new_room = Rc::new(RefCell::new(Room {
                 name: room_names.get(i * rt + j).unwrap().to_string(),
                 North: None,
                 South: None,
@@ -169,18 +197,18 @@ fn construct_board() -> Vec<Vec<Box<Room>>> {
                 West: None,
                 item_list: None,
                 character_list: None,
-            });
+            }));
             rooms.push(new_room);
         }
         board.push(rooms);
     }
-    shuffle_rooms(&mut board);
+    // shuffle_rooms(&mut board);
     link_rooms(&mut board);
-    
+
     board
 }
 
-fn shuffle_rooms(board: &mut Vec<Vec<Box<Room>>>) {
+fn shuffle_rooms(board: &mut Vec<Vec<Rc<RefCell<Room>>>>) {
     let rn: usize = rand::thread_rng().gen_range(0..100);
     for i in 0..(board.len()) {
         for j in 0..(board.len()) {
@@ -190,33 +218,28 @@ fn shuffle_rooms(board: &mut Vec<Vec<Box<Room>>>) {
     }
 }
 
-fn link_rooms(board: &mut Vec<Vec<Box<Room>>>) {
+fn link_rooms(board: &mut Vec<Vec<Rc<RefCell<Room>>>>) {
     let size = board.len();
-    let mut rooms_iter = board.iter_mut();
     for i in 0..size {
-        let rooms = rooms_iter.nth(i).unwrap();
         for j in 0..size {
-            let mut this_room = rooms.get_mut(j).unwrap();
+            let this_room_ptr = Rc::clone(board.get(i).unwrap().get(j).unwrap());
+            let mut this_room = this_room_ptr.borrow_mut();
             // North
-            if (i - 1) as i32 >= 0 {
-                let r = rooms_iter.nth(i-1).unwrap();
-                let c = r.get(j).unwrap();
-                let d = c.as_ref();
-                let e = Rc::new(d);
-                this_room.North = Some(e);
+            if i > 0 {
+                this_room.North = Some(Rc::clone(board.get(i-1).unwrap().get(j).unwrap()));
             }
-            // //South
-            // if ( (i+1) < size) {
-            //     this_room.South = board.get(i+1).unwrap().get_mut(j);
-            // }
-            // //East
-            // if ( (j+1) < size) {
-            //     this_room.East = board.get(i).unwrap().get_mut(j+1);
-            // }
-            // //West
-            // if ( (j-1) >= 0) {
-            //     this_room.West = board.get(i).unwrap().get_mut(j-1);
-            // }
+            //South
+            if (i + 1) < size {
+                this_room.South = Some(Rc::clone(board.get(i+1).unwrap().get(j).unwrap()));
+            }
+            //East
+            if (j + 1) < size {
+                this_room.East = Some(Rc::clone(board.get(i).unwrap().get(j+1).unwrap()));
+            }
+            //West
+            if j > 0 {
+                this_room.West = Some(Rc::clone(board.get(i).unwrap().get(j-1).unwrap()));
+            }
         }
     }
 }
