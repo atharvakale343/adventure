@@ -25,6 +25,9 @@ fn print_room(room: Rc<RefCell<Room>>) {
     print_demarkcation_line();
     print_center("Rooms around you:");
     print_center(format!("{}", room.around()).as_str());
+    print_demarkcation_line();
+    print_center(format!("Items in {}:", room.name.as_str()).as_str());
+    print_center(room.item_list_as_string().as_str());
 } 
 
 /*

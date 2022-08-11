@@ -62,7 +62,7 @@ impl Game {
                         South: None,
                         East: None,
                         West: None,
-                        item_list: None,
+                        item_list: Vec::new(),
                         character_list: None,
                     }));
                     rooms.push(new_room);
@@ -165,29 +165,44 @@ struct Room {
     South: Option<Rc<RefCell<Room>>>,
     East: Option<Rc<RefCell<Room>>>,
     West: Option<Rc<RefCell<Room>>>,
-    item_list: Option<Vec<Rc<RefCell<Entity>>>>,
+    item_list: Vec<Rc<RefCell<Entity>>>,
     character_list: Option<Vec<Rc<RefCell<Entity>>>>,
 }
 
 impl Room {
     fn around(&self) -> String {
         let mut around: String = String::new();
-        fn parens(str1: &str, str2: &str) -> String {
+        fn form(str1: &str, str2: &str) -> String {
             format!(" {} ({}) |", str1, str2)
         }
         if let Some(room) = self.North.as_ref() {
-            around.push_str(&parens(&room.borrow().name, "North"));
+            around.push_str(&form(&room.borrow().name, "North"));
         }
         if let Some(room) = self.South.as_ref() {
-            around.push_str(&parens(&room.borrow().name, "South"));
+            around.push_str(&form(&room.borrow().name, "South"));
         }
         if let Some(room) = self.East.as_ref() {
-            around.push_str(&parens(&room.borrow().name, "East"));
+            around.push_str(&form(&room.borrow().name, "East"));
         }
         if let Some(room) = self.West.as_ref() {
-            around.push_str(&parens(&room.borrow().name, "West"));
+            around.push_str(&form(&room.borrow().name, "West"));
         }
         around
+    }
+    fn item_list_as_string(&self) -> String {
+        let mut string: String = String::new();
+        fn form(str1: &str) -> String {
+            format!(" {} |", str1)
+        }
+        for item in self.item_list.iter() {
+            string.push_str(&form(&item.borrow().name));
+        }
+        string
+    }
+
+
+    fn push_item(&mut self, item: ) {
+        self.item_list = item_list;
     }
 }
 
