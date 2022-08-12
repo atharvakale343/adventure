@@ -13,13 +13,21 @@ use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+    Invalid,
+}
+
 #[derive(Debug)]
 struct Board {
     rooms: Vec<Vec<Rc<RefCell<Room>>>>,
 }
 
 impl Board {
-    fn get_random_room(&self) -> Rc<RefCell<Room>>{
+    fn get_random_room(&self) -> Rc<RefCell<Room>> {
         let i: usize = rand::thread_rng().gen_range(0..self.rooms.len());
         let j: usize = rand::thread_rng().gen_range(0..self.rooms.len());
         Rc::clone(self.rooms.get(i).unwrap().get(j).unwrap())
@@ -28,7 +36,7 @@ impl Board {
 #[derive(Debug)]
 struct Game {
     board: Board,
-    avatar: Entity,
+    avatar: Rc<RefCell<Entity>>,
     game_items: Vec<Rc<RefCell<Entity>>>,
     npcs: Vec<Rc<RefCell<Entity>>>,
     inventory: Vec<Rc<RefCell<Entity>>>,
@@ -63,7 +71,7 @@ impl Game {
                         East: None,
                         West: None,
                         item_list: Vec::new(),
-                        character_list: None,
+                        character_list: Vec::new(),
                     }));
                     rooms.push(new_room);
                 }
@@ -129,12 +137,14 @@ impl Game {
         let _game_items = create_game_items(_item_names);
         let _npcs = create_npcs(_npc_names);
         let _solution = Solution::new(&_board, &_game_items, &_npcs);
-        let _current_room = {
-            _board.get_random_room()
-        };
+        let _current_room = { _board.get_random_room() };
+        let avatar_ptr = Rc::new(RefCell::new(avatar));
+        _current_room
+            .borrow_mut()
+            .push_character(avatar_ptr.clone().into());
         Game {
             board: _board,
-            avatar: avatar,
+            avatar: avatar_ptr,
             game_items: _game_items,
             npcs: _npcs,
             inventory: Vec::new(),
@@ -145,6 +155,7 @@ impl Game {
 
     fn set_current_room(&mut self, current_room: &Rc<RefCell<Room>>) {
         self.current_room = Some(Rc::clone(current_room));
+        // TODO: Move Avatar into new room
     }
 }
 
@@ -166,7 +177,7 @@ struct Room {
     East: Option<Rc<RefCell<Room>>>,
     West: Option<Rc<RefCell<Room>>>,
     item_list: Vec<Rc<RefCell<Entity>>>,
-    character_list: Option<Vec<Rc<RefCell<Entity>>>>,
+    character_list: Vec<Rc<RefCell<Entity>>>,
 }
 
 impl Room {
@@ -194,15 +205,33 @@ impl Room {
         fn form(str1: &str) -> String {
             format!(" {} |", str1)
         }
+        if self.item_list.is_empty() {
+            string.push_str("No items.");
+        }
         for item in self.item_list.iter() {
             string.push_str(&form(&item.borrow().name));
         }
         string
     }
+    fn character_list_as_string(&self) -> String {
+        let mut string: String = String::new();
+        fn form(str1: &str) -> String {
+            format!(" {} |", str1)
+        }
+        if self.character_list.is_empty() {
+            string.push_str("No characters.");
+        }
+        for character in self.character_list.iter() {
+            string.push_str(&form(&character.borrow().name));
+        }
+        string
+    }
 
-
-    fn push_item(&mut self, item: ) {
-        self.item_list = item_list;
+    fn push_item(&mut self, item: Rc<RefCell<Entity>>) {
+        self.item_list.push(item);
+    }
+    fn push_character(&mut self, entity: Rc<RefCell<Entity>>) {
+        self.character_list.push(entity);
     }
 }
 
@@ -245,10 +274,12 @@ struct Solution {
 }
 
 impl Solution {
-    fn new(board: &Board, items: &Vec<Rc<RefCell<Entity>>>, characters: &Vec<Rc<RefCell<Entity>>>) -> Self {
-        let room = {
-            board.get_random_room()
-        };
+    fn new(
+        board: &Board,
+        items: &Vec<Rc<RefCell<Entity>>>,
+        characters: &Vec<Rc<RefCell<Entity>>>,
+    ) -> Self {
+        let room = { board.get_random_room() };
         let item = {
             let rn: usize = rand::thread_rng().gen_range(0..items.len());
             Rc::clone(items.get(rn).unwrap())
@@ -280,7 +311,9 @@ impl fmt::Display for Solution {
                  ITEM: {} \n\
             CHARACTER: {} \n\
             ",
-            self.room.borrow().name, self.item.borrow().name, self.character.borrow().name,
+            self.room.borrow().name,
+            self.item.borrow().name,
+            self.character.borrow().name,
         )
     }
 }
@@ -322,19 +355,25 @@ fn main() {
 
     let mut termbuf = String::new();
 
-    let game = Game::new(
+    let mut game = Game::new(
         room_names.to_vec(),
         item_names.to_vec(),
         npc_names.to_vec(),
         Entity::new("You".to_owned()),
     );
 
+    game.current_room
+        .as_mut()
+        .unwrap()
+        .borrow_mut()
+        .push_item(game.game_items.remove(0));
+
     look(rc!(game.current_room));
 
     loop {
         print!("Enter a command or type help: \n");
         termbuf.clear();
-        let buffer = get_user_input(&mut termbuf);
+        let mut buffer = get_user_input(&mut termbuf);
 
         print!("\n");
 
@@ -342,31 +381,53 @@ fn main() {
             help();
         } else if buffer.eq("list") {
             list();
-        }
-        else if buffer.eq("game_solution") {
+        } else if buffer.eq("game_solution") {
             println!("{}", game.solution);
-        }
-        else if buffer.eq("look") {
+        } else if buffer.eq("look") {
+            look(rc!(game.current_room));
+        } else if buffer.eq("go") {
+            // inner loop for accepting direction
+            loop {
+                print!("Enter north, south, east, or west: \n");
+                termbuf.clear();
+                println!("termbuf: {}", termbuf);
+                buffer = get_user_input(&mut termbuf);
+
+                let direction: Direction = get_direction(buffer);
+                let mut new_room: Option<Rc<RefCell<Room>>>;
+
+                {
+                    let this_room = game.current_room.as_ref().unwrap().borrow();
+
+                    let new_room_ref = match direction {
+                        Direction::North => this_room.North.as_ref(),
+                        Direction::South => this_room.South.as_ref(),
+                        Direction::East => this_room.East.as_ref(),
+                        Direction::West => this_room.West.as_ref(),
+                        Direction::Invalid => {
+                            println!("\nRe-enter direction!\n");
+                            continue;
+                        },
+                    };
+
+                    new_room = match new_room_ref {
+                        Some(reference) => Some(Rc::clone(&reference)),
+                        None => None,
+                    };
+                }
+
+                match new_room {
+                    Some(room_ref) => {
+                        game.set_current_room(&room_ref);
+                    },
+                    None => {
+                        println!("\nCannot go that way!\n");
+                    },
+                }
+                break;
+            }
             look(rc!(game.current_room));
         }
-        //         else if(compare_strings(buffer, "go")) {
-        //             // inner loop for accepting direction
-        //             while(1) {
-        //                 print!("Enter north, south, east, or west: \n");
-        //                 get_user_input(&buffer, &bufsize);
-        //                 int direction;
-        //                 // direction returns -1 if invalid direction was specified
-        //                 if ( (direction = get_direction(buffer)) != -1 ) {
-        //                     // returns the same room if impossible to go in specified direction
-        //                     currentRoom = go(direction, currentRoom, avatar.person);
-        //                     break;
-        //                 }
-        //                 else {
-        //                     print!("Re-enter direction!\n\n");
-        //                 }
-        //             }
-        //             look(currentRoom);
-        //         }
         //         else if(compare_strings(buffer, "take")) {
         //             if (currentRoom->item_list == NULL ) {
         //                 print!("No items to take in the room!\n");
@@ -516,4 +577,20 @@ fn main() {
         //     if (win_flag==0) {
         //         print!("NOT A VALID GUESS!\n");
     }
+}
+
+fn get_direction(buffer: &str) -> Direction {
+    if buffer.eq("north") {
+        return Direction::North;
+    }
+    if buffer.eq("south") {
+        return Direction::South;
+    }
+    if buffer.eq("east") {
+        return Direction::East;
+    }
+    if buffer.eq("west") {
+        return Direction::West;
+    }
+    Direction::Invalid
 }

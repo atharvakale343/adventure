@@ -1,6 +1,6 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 
-use crate::{help_menus as menu, config::PRINT_WIDTH, Room};
+use crate::{config::PRINT_WIDTH, help_menus as menu, Room};
 
 fn print_hex_array(vec: Vec<u8>) {
     // for char in vec.iter() {
@@ -11,12 +11,12 @@ fn print_hex_array(vec: Vec<u8>) {
 }
 
 fn print_demarkcation_line() {
-    print!("════════════════════════════════════════════════════════════════════════════════\n");
+    print!("{}\n", "═".repeat(PRINT_WIDTH));
 }
 pub(crate) fn print_center(text: &str) {
-    let padlen = (PRINT_WIDTH - text.len()) / 2;
-    println!("{:indent$}{}", "", text, indent=padlen);
-} 
+    let padlen = PRINT_WIDTH.checked_sub(text.len()).unwrap_or(0) / 2;
+    println!("{:indent$}{}", "", text, indent = padlen);
+}
 
 fn print_room(room: Rc<RefCell<Room>>) {
     let room = room.borrow();
@@ -28,7 +28,11 @@ fn print_room(room: Rc<RefCell<Room>>) {
     print_demarkcation_line();
     print_center(format!("Items in {}:", room.name.as_str()).as_str());
     print_center(room.item_list_as_string().as_str());
-} 
+    print_demarkcation_line();
+    print_center(format!("Characters in {}:", room.name.as_str()).as_str());
+    print_center(room.character_list_as_string().as_str());
+    print_demarkcation_line();
+}
 
 /*
 Prints a hardcoded hex array of help commands

@@ -21,4 +21,4 @@ pub static item_names: [&str; 6] = [
     "Bedsheet",
 ];
 
-pub static PRINT_WIDTH: usize = 80;
+pub static PRINT_WIDTH: usize = 90;
