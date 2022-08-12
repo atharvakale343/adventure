@@ -3,9 +3,9 @@ mod config;
 mod help_menus;
 
 use crate::commands::*;
-use crate::config::item_names;
-use crate::config::npc_names;
-use crate::config::room_names;
+use crate::config::ITEM_NAMES;
+use crate::config::NPC_NAMES;
+use crate::config::ROOM_NAMES;
 
 use rand::Rng;
 use std::cell::RefCell;
@@ -57,19 +57,19 @@ impl Game {
         fn construct_rooms(_room_names: Vec<String>) -> Vec<Vec<Rc<RefCell<Room>>>> {
             let mut board = Vec::new();
             assert!(
-                room_names.len() == 9,
+                ROOM_NAMES.len() == 9,
                 "ERROR: NUMBER OF ROOMS must be a perfect square"
             );
-            let rt = (room_names.len() as f64).sqrt() as usize;
+            let rt = (ROOM_NAMES.len() as f64).sqrt() as usize;
             for i in 0..rt {
                 let mut rooms = Vec::new();
                 for j in 0..rt {
                     let new_room = Rc::new(RefCell::new(Room {
-                        name: room_names.get(i * rt + j).unwrap().to_string(),
-                        North: None,
-                        South: None,
-                        East: None,
-                        West: None,
+                        name: ROOM_NAMES.get(i * rt + j).unwrap().to_string(),
+                        north: None,
+                        south: None,
+                        east: None,
+                        west: None,
                         item_list: Vec::new(),
                         character_list: Vec::new(),
                     }));
@@ -112,21 +112,21 @@ impl Game {
                     let mut this_room = this_room_ptr.borrow_mut();
                     // North
                     if i > 0 {
-                        this_room.North =
+                        this_room.north =
                             Some(Rc::clone(board.get(i - 1).unwrap().get(j).unwrap()));
                     }
                     //South
                     if (i + 1) < size {
-                        this_room.South =
+                        this_room.south =
                             Some(Rc::clone(board.get(i + 1).unwrap().get(j).unwrap()));
                     }
                     //East
                     if (j + 1) < size {
-                        this_room.East = Some(Rc::clone(board.get(i).unwrap().get(j + 1).unwrap()));
+                        this_room.east = Some(Rc::clone(board.get(i).unwrap().get(j + 1).unwrap()));
                     }
                     //West
                     if j > 0 {
-                        this_room.West = Some(Rc::clone(board.get(i).unwrap().get(j - 1).unwrap()));
+                        this_room.west = Some(Rc::clone(board.get(i).unwrap().get(j - 1).unwrap()));
                     }
                 }
             }
@@ -141,7 +141,7 @@ impl Game {
         let avatar_ptr = Rc::new(RefCell::new(avatar));
         _current_room
             .borrow_mut()
-            .push_character(avatar_ptr.clone().into());
+            .push_character(avatar_ptr.clone());
         Game {
             board: _board,
             avatar: avatar_ptr,
@@ -153,9 +153,18 @@ impl Game {
         }
     }
 
-    fn set_current_room(&mut self, current_room: &Rc<RefCell<Room>>) {
-        self.current_room = Some(Rc::clone(current_room));
-        // TODO: Move Avatar into new room
+    fn set_current_room(&mut self, new_room: &Rc<RefCell<Room>>) {
+        let character;
+        {
+            let mut current_room = self.current_room.as_mut().unwrap().borrow_mut();
+            character = current_room.remove_character("You");
+        }
+        self.current_room = Some(Rc::clone(new_room));
+        self.current_room
+            .as_mut()
+            .unwrap()
+            .borrow_mut()
+            .push_character(character);
     }
 }
 
@@ -172,10 +181,10 @@ impl Entity {
 
 struct Room {
     name: String,
-    North: Option<Rc<RefCell<Room>>>,
-    South: Option<Rc<RefCell<Room>>>,
-    East: Option<Rc<RefCell<Room>>>,
-    West: Option<Rc<RefCell<Room>>>,
+    north: Option<Rc<RefCell<Room>>>,
+    south: Option<Rc<RefCell<Room>>>,
+    east: Option<Rc<RefCell<Room>>>,
+    west: Option<Rc<RefCell<Room>>>,
     item_list: Vec<Rc<RefCell<Entity>>>,
     character_list: Vec<Rc<RefCell<Entity>>>,
 }
@@ -186,16 +195,16 @@ impl Room {
         fn form(str1: &str, str2: &str) -> String {
             format!(" {} ({}) |", str1, str2)
         }
-        if let Some(room) = self.North.as_ref() {
+        if let Some(room) = self.north.as_ref() {
             around.push_str(&form(&room.borrow().name, "North"));
         }
-        if let Some(room) = self.South.as_ref() {
+        if let Some(room) = self.south.as_ref() {
             around.push_str(&form(&room.borrow().name, "South"));
         }
-        if let Some(room) = self.East.as_ref() {
+        if let Some(room) = self.east.as_ref() {
             around.push_str(&form(&room.borrow().name, "East"));
         }
-        if let Some(room) = self.West.as_ref() {
+        if let Some(room) = self.west.as_ref() {
             around.push_str(&form(&room.borrow().name, "West"));
         }
         around
@@ -233,6 +242,15 @@ impl Room {
     fn push_character(&mut self, entity: Rc<RefCell<Entity>>) {
         self.character_list.push(entity);
     }
+
+    fn remove_character(&mut self, name: &str) -> Rc<RefCell<Entity>> {
+        let position = self
+            .character_list
+            .iter()
+            .position(|x| x.borrow().name.eq(name))
+            .unwrap();
+        self.character_list.remove(position)
+    }
 }
 
 impl fmt::Debug for Room {
@@ -242,19 +260,19 @@ impl fmt::Debug for Room {
         // stream: `f`. Returns `fmt::Result` which indicates whether the
         // operation succeeded or failed. Note that `write!` uses syntax which
         // is very similar to `println!`.
-        let north = match self.North.as_ref() {
+        let north = match self.north.as_ref() {
             Some(r) => (r.borrow().name.clone()),
             None => "None".to_owned(),
         };
-        let south = match self.South.as_ref() {
+        let south = match self.south.as_ref() {
             Some(r) => (r.borrow().name.clone()),
             None => "None".to_owned(),
         };
-        let east = match self.East.as_ref() {
+        let east = match self.east.as_ref() {
             Some(r) => (r.borrow().name.clone()),
             None => "None".to_owned(),
         };
-        let west = match self.West.as_ref() {
+        let west = match self.west.as_ref() {
             Some(r) => (r.borrow().name.clone()),
             None => "None".to_owned(),
         };
@@ -330,9 +348,9 @@ fn get_user_input(buffer: &mut String) -> &str {
 
 fn main2() {
     let game = Game::new(
-        room_names.to_vec(),
-        item_names.to_vec(),
-        npc_names.to_vec(),
+        ROOM_NAMES.to_vec(),
+        ITEM_NAMES.to_vec(),
+        NPC_NAMES.to_vec(),
         Entity::new("You".to_owned()),
     );
     println!("{:#?}", game.solution);
@@ -345,20 +363,20 @@ macro_rules! rc {
 }
 
 fn main() {
-    print!("\n\n");
+    println!("\n");
     print_center("Welcome to Clue!");
-    print!("\n");
+    println!();
     print_center("You are currently in:");
-    print!("\n");
+    println!();
 
     let n_clue: usize = 0;
 
     let mut termbuf = String::new();
 
     let mut game = Game::new(
-        room_names.to_vec(),
-        item_names.to_vec(),
-        npc_names.to_vec(),
+        ROOM_NAMES.to_vec(),
+        ITEM_NAMES.to_vec(),
+        NPC_NAMES.to_vec(),
         Entity::new("You".to_owned()),
     );
 
@@ -371,11 +389,11 @@ fn main() {
     look(rc!(game.current_room));
 
     loop {
-        print!("Enter a command or type help: \n");
+        println!("Enter a command or type help:");
         termbuf.clear();
         let mut buffer = get_user_input(&mut termbuf);
 
-        print!("\n");
+        println!();
 
         if buffer.eq("help") {
             help();
@@ -388,41 +406,37 @@ fn main() {
         } else if buffer.eq("go") {
             // inner loop for accepting direction
             loop {
-                print!("Enter north, south, east, or west: \n");
+                println!("Enter north, south, east, or west:");
                 termbuf.clear();
-                println!("termbuf: {}", termbuf);
                 buffer = get_user_input(&mut termbuf);
 
                 let direction: Direction = get_direction(buffer);
-                let mut new_room: Option<Rc<RefCell<Room>>>;
+                let new_room: Option<Rc<RefCell<Room>>>;
 
                 {
                     let this_room = game.current_room.as_ref().unwrap().borrow();
 
                     let new_room_ref = match direction {
-                        Direction::North => this_room.North.as_ref(),
-                        Direction::South => this_room.South.as_ref(),
-                        Direction::East => this_room.East.as_ref(),
-                        Direction::West => this_room.West.as_ref(),
+                        Direction::North => this_room.north.as_ref(),
+                        Direction::South => this_room.south.as_ref(),
+                        Direction::East => this_room.east.as_ref(),
+                        Direction::West => this_room.west.as_ref(),
                         Direction::Invalid => {
                             println!("\nRe-enter direction!\n");
                             continue;
-                        },
+                        }
                     };
 
-                    new_room = match new_room_ref {
-                        Some(reference) => Some(Rc::clone(&reference)),
-                        None => None,
-                    };
+                    new_room = new_room_ref.map(Rc::clone);
                 }
 
                 match new_room {
                     Some(room_ref) => {
                         game.set_current_room(&room_ref);
-                    },
+                    }
                     None => {
                         println!("\nCannot go that way!\n");
-                    },
+                    }
                 }
                 break;
             }
@@ -438,7 +452,7 @@ fn main() {
         //                     print!("Which item would you like to take?\n");
         //                     print!("Items in %s: ", currentRoom->name);
         //                     print_item_list(currentRoom->item_list);
-        //                     print!("\n");
+        //                     println!();
         //                     get_user_input(&buffer, &bufsize);
 
         //                     Item * taken_item;
@@ -497,7 +511,7 @@ fn main() {
 
         //                     ++n_clue;
 
-        //                     print!("\n");
+        //                     println!();
 
         //                     int has_won_game = check_winning_state(currentRoom, avatar.inventory);
         //                     if (has_won_game) {
@@ -524,7 +538,7 @@ fn main() {
         //         else {
         //             print!("Invalid command! Use help to display available commands.\n");
         //         }
-        //         print!("\n");
+        //         println!();
         //     }
 
         // }
@@ -535,7 +549,7 @@ fn main() {
         // */
         // void get_user_input(char ** buffer, size_t * bufsize) {
         //     getline(buffer, bufsize, stdin);
-        //     (*buffer)[strcspn(*buffer, "\n")] = (char)'\0';   // removes extra \n from user input
+        //     (*buffer)[strcspn(*bufferln, )] = (char)'\0';   // removes extra \n from user input
         // }
 
         // /*

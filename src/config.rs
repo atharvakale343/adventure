@@ -1,4 +1,4 @@
-pub static room_names: [&str; 9] = [
+pub static ROOM_NAMES: [&str; 9] = [
     "Drawing Room",
     "Backyard",
     "Hallway",
@@ -10,9 +10,9 @@ pub static room_names: [&str; 9] = [
     "Lexi's Room",
 ];
 
-pub static npc_names: [&str; 5] = ["Katie", "Harry", "Peter", "Savanah", "Lexi"];
+pub static NPC_NAMES: [&str; 5] = ["Katie", "Harry", "Peter", "Savanah", "Lexi"];
 
-pub static item_names: [&str; 6] = [
+pub static ITEM_NAMES: [&str; 6] = [
     "Rubber Ducky",
     "Hairdryer",
     "Knife",

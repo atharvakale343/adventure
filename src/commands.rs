@@ -11,10 +11,10 @@ fn print_hex_array(vec: Vec<u8>) {
 }
 
 fn print_demarkcation_line() {
-    print!("{}\n", "═".repeat(PRINT_WIDTH));
+    println!("{}", "═".repeat(PRINT_WIDTH));
 }
 pub(crate) fn print_center(text: &str) {
-    let padlen = PRINT_WIDTH.checked_sub(text.len()).unwrap_or(0) / 2;
+    let padlen = PRINT_WIDTH.saturating_sub(text.len()) / 2;
     println!("{:indent$}{}", "", text, indent = padlen);
 }
 
@@ -24,7 +24,7 @@ fn print_room(room: Rc<RefCell<Room>>) {
     print_center(&room.name);
     print_demarkcation_line();
     print_center("Rooms around you:");
-    print_center(format!("{}", room.around()).as_str());
+    print_center(room.around().as_str());
     print_demarkcation_line();
     print_center(format!("Items in {}:", room.name.as_str()).as_str());
     print_center(room.item_list_as_string().as_str());
