@@ -14,7 +14,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
-#[derive(Default)]
 struct WinningState {
     room_match: State,
     item_match: State,
@@ -23,23 +22,13 @@ struct WinningState {
 
 impl WinningState {
     fn new() -> Self {
-        Default::default()
+        Self { room_match: State::Miss, item_match: State::Miss, character_match: State::Miss }
     }
 }
 
-#[derive(Default)]
 enum State {
     Match,
-    #[default]
     Miss,
-}
-
-enum Direction {
-    North,
-    South,
-    East,
-    West,
-    Invalid,
 }
 
 struct Board {
@@ -647,20 +636,4 @@ fn main() {
             println!("Invalid command! Use `help` to display available commands.\n");
         }
     }
-}
-
-fn get_direction(buffer: &str) -> Direction {
-    if buffer.eq("north") {
-        return Direction::North;
-    }
-    if buffer.eq("south") {
-        return Direction::South;
-    }
-    if buffer.eq("east") {
-        return Direction::East;
-    }
-    if buffer.eq("west") {
-        return Direction::West;
-    }
-    Direction::Invalid
 }

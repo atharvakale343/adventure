@@ -1,8 +1,34 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    config::PRINT_WIDTH, get_direction, get_user_input, help_menus as menu, Direction, Game, Room,
+    config::PRINT_WIDTH, get_user_input, help_menus as menu, Game, Room,
 };
+
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+    Invalid,
+}
+
+impl Direction {
+    fn get_direction(buffer: &str) -> Direction {
+        if buffer.eq("north") {
+            return Direction::North;
+        }
+        if buffer.eq("south") {
+            return Direction::South;
+        }
+        if buffer.eq("east") {
+            return Direction::East;
+        }
+        if buffer.eq("west") {
+            return Direction::West;
+        }
+        Direction::Invalid
+    }
+}
 
 fn print_hex_array(vec: Vec<u8>) {
     // for char in vec.iter() {
@@ -57,7 +83,7 @@ pub(crate) fn go(termbuf: &mut String, game: &mut Game) {
         termbuf.clear();
         let buffer = get_user_input(termbuf);
 
-        let direction: Direction = get_direction(buffer);
+        let direction: Direction = Direction::get_direction(buffer);
         let new_room: Option<Rc<RefCell<Room>>>;
 
         {
