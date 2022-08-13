@@ -3,7 +3,7 @@ on: [push, pull_request]
 name: Continuous integration
 
 jobs:
-  check:
+  build-ubuntu:
     name: build
     runs-on: ubuntu-latest
     steps:
@@ -17,7 +17,7 @@ jobs:
         with:
           command: build
 
-  check:
+  build-windows:
     name: build
     runs-on: windows-latest
     steps:
@@ -31,7 +31,7 @@ jobs:
         with:
           command: build
 
-  check:
+  build-macos:
     name: build
     runs-on: macos-latest
     steps:
