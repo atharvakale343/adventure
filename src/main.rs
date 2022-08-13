@@ -4,6 +4,7 @@ mod help_menus;
 
 use crate::commands::*;
 use crate::config::ITEM_NAMES;
+use crate::config::MAX_CLUES;
 use crate::config::NPC_NAMES;
 use crate::config::ROOM_NAMES;
 
@@ -13,6 +14,26 @@ use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
+#[derive(Default)]
+struct WinningState {
+    room_match: State,
+    item_match: State,
+    character_match: State,
+}
+
+impl WinningState {
+    fn new() -> Self {
+        Default::default()
+    }
+}
+
+#[derive(Default)]
+enum State {
+    Match,
+    #[default]
+    Miss,
+}
+
 enum Direction {
     North,
     South,
@@ -21,7 +42,6 @@ enum Direction {
     Invalid,
 }
 
-#[derive(Debug)]
 struct Board {
     rooms: Vec<Vec<Rc<RefCell<Room>>>>,
 }
@@ -32,11 +52,23 @@ impl Board {
         let j: usize = rand::thread_rng().gen_range(0..self.rooms.len());
         Rc::clone(self.rooms.get(i).unwrap().get(j).unwrap())
     }
+
+    fn find_room_for_character_by_name(&self, name: &str) -> Option<Rc<RefCell<Room>>> {
+        for room_row in &self.rooms {
+            for room in room_row {
+                if Entity::find_entity_by_name(name, &room.borrow().character_list).is_some() {
+                    return Some(Rc::clone(room));
+                } else {
+                    continue;
+                }
+            }
+        }
+        None
+    }
 }
-#[derive(Debug)]
+#[allow(dead_code)]
 struct Game {
     board: Board,
-    avatar: Rc<RefCell<Entity>>,
     game_items: Vec<Rc<RefCell<Entity>>>,
     npcs: Vec<Rc<RefCell<Entity>>>,
     inventory: Vec<Rc<RefCell<Entity>>>,
@@ -131,20 +163,36 @@ impl Game {
                 }
             }
         }
-        let _board = Board {
+        fn distribute_characters(board: &mut Board, entities: &mut Vec<Rc<RefCell<Entity>>>) {
+            for entity in entities {
+                let random_room = board.get_random_room();
+                Entity::push_entity(
+                    &mut random_room.borrow_mut().character_list,
+                    Rc::clone(entity),
+                );
+            }
+        }
+        fn distribute_items(board: &mut Board, entities: &mut Vec<Rc<RefCell<Entity>>>) {
+            for entity in entities {
+                let random_room = board.get_random_room();
+                Entity::push_entity(&mut random_room.borrow_mut().item_list, Rc::clone(entity));
+            }
+        }
+        let mut _board = Board {
             rooms: construct_rooms(_room_names),
         };
-        let _game_items = create_game_items(_item_names);
-        let _npcs = create_npcs(_npc_names);
+        let mut _game_items = create_game_items(_item_names);
+        let mut _npcs = create_npcs(_npc_names);
         let _solution = Solution::new(&_board, &_game_items, &_npcs);
         let _current_room = { _board.get_random_room() };
-        let avatar_ptr = Rc::new(RefCell::new(avatar));
-        _current_room
-            .borrow_mut()
-            .push_character(avatar_ptr.clone());
+        Entity::push_entity(
+            &mut _current_room.borrow_mut().character_list,
+            Rc::new(RefCell::new(avatar)),
+        );
+        distribute_characters(&mut _board, &mut _npcs);
+        distribute_items(&mut _board, &mut _game_items);
         Game {
             board: _board,
-            avatar: avatar_ptr,
             game_items: _game_items,
             npcs: _npcs,
             inventory: Vec::new(),
@@ -154,17 +202,47 @@ impl Game {
     }
 
     fn set_current_room(&mut self, new_room: &Rc<RefCell<Room>>) {
-        let character;
-        {
-            let mut current_room = self.current_room.as_mut().unwrap().borrow_mut();
-            character = current_room.remove_character("You");
-        }
+        Entity::move_entity_by_name(
+            "You",
+            &mut self
+                .current_room
+                .as_mut()
+                .unwrap()
+                .borrow_mut()
+                .character_list,
+            &mut new_room.borrow_mut().character_list,
+            "ERROR: Unreachable",
+        )
+        .ok()
+        .unwrap();
         self.current_room = Some(Rc::clone(new_room));
-        self.current_room
-            .as_mut()
-            .unwrap()
-            .borrow_mut()
-            .push_character(character);
+    }
+
+    pub(crate) fn get_win_state(&self) -> WinningState {
+        let mut win_state = WinningState::new();
+        if Rc::ptr_eq(self.current_room.as_ref().unwrap(), &self.solution.room) {
+            win_state.room_match = State::Match;
+        }
+        let correct_item = &self.solution.item.borrow().name;
+        if Entity::find_entity_by_name(
+            correct_item,
+            &self.current_room.as_ref().unwrap().borrow().item_list,
+        )
+        .is_some()
+            || Entity::find_entity_by_name(correct_item, &self.inventory).is_some()
+        {
+            win_state.item_match = State::Match;
+        }
+        let correct_character = &self.solution.character.borrow().name;
+        if Entity::find_entity_by_name(
+            correct_character,
+            &self.current_room.as_ref().unwrap().borrow().character_list,
+        )
+        .is_some()
+        {
+            win_state.character_match = State::Match;
+        }
+        win_state
     }
 }
 
@@ -176,6 +254,50 @@ struct Entity {
 impl Entity {
     fn new(name: String) -> Self {
         Self { name }
+    }
+
+    fn entity_list_as_string(list: &Vec<Rc<RefCell<Entity>>>, default: &str) -> String {
+        let mut string: String = String::new();
+        fn form(str1: &str) -> String {
+            format!("{} | ", str1)
+        }
+        if list.is_empty() {
+            string.push_str(default);
+        }
+        for entity in list.iter() {
+            string.push_str(&form(&entity.borrow().name));
+        }
+        string
+    }
+
+    fn find_entity_by_name(name: &str, list: &[Rc<RefCell<Entity>>]) -> Option<usize> {
+        list.iter()
+            .position(|x| x.borrow().name.eq_ignore_ascii_case(name))
+    }
+    fn push_entity(list: &mut Vec<Rc<RefCell<Entity>>>, item: Rc<RefCell<Entity>>) {
+        list.push(item);
+    }
+    fn remove_entity(
+        list: &mut Vec<Rc<RefCell<Entity>>>,
+        name: &str,
+    ) -> Option<Rc<RefCell<Entity>>> {
+        let position = Entity::find_entity_by_name(name, list);
+        position.map(|position| list.remove(position))
+    }
+    fn move_entity_by_name(
+        name: &str,
+        source: &mut Vec<Rc<RefCell<Entity>>>,
+        dest: &mut Vec<Rc<RefCell<Entity>>>,
+        default: &str,
+    ) -> Result<(), String> {
+        let item = Entity::remove_entity(source, name);
+        match item {
+            Some(item) => {
+                dest.push(item);
+                Ok(())
+            }
+            None => Err(default.to_owned()),
+        }
     }
 }
 
@@ -210,46 +332,10 @@ impl Room {
         around
     }
     fn item_list_as_string(&self) -> String {
-        let mut string: String = String::new();
-        fn form(str1: &str) -> String {
-            format!(" {} |", str1)
-        }
-        if self.item_list.is_empty() {
-            string.push_str("No items.");
-        }
-        for item in self.item_list.iter() {
-            string.push_str(&form(&item.borrow().name));
-        }
-        string
+        Entity::entity_list_as_string(&self.item_list, "No items.")
     }
     fn character_list_as_string(&self) -> String {
-        let mut string: String = String::new();
-        fn form(str1: &str) -> String {
-            format!(" {} |", str1)
-        }
-        if self.character_list.is_empty() {
-            string.push_str("No characters.");
-        }
-        for character in self.character_list.iter() {
-            string.push_str(&form(&character.borrow().name));
-        }
-        string
-    }
-
-    fn push_item(&mut self, item: Rc<RefCell<Entity>>) {
-        self.item_list.push(item);
-    }
-    fn push_character(&mut self, entity: Rc<RefCell<Entity>>) {
-        self.character_list.push(entity);
-    }
-
-    fn remove_character(&mut self, name: &str) -> Rc<RefCell<Entity>> {
-        let position = self
-            .character_list
-            .iter()
-            .position(|x| x.borrow().name.eq(name))
-            .unwrap();
-        self.character_list.remove(position)
+        Entity::entity_list_as_string(&self.character_list, "No characters.")
     }
 }
 
@@ -315,6 +401,38 @@ impl Solution {
     }
 }
 
+impl fmt::Display for State {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let display = match *self {
+            State::Match => "MATCH",
+            State::Miss => "MISS",
+        };
+        write!(f, "{}", display)
+    }
+}
+impl fmt::Display for WinningState {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        write!(
+            f,
+            "\nANSWER\n\
+                 ROOM: {} \n\
+                 ITEM: {} \n\
+            CHARACTER: {} \n\
+            ",
+            self.room_match, self.item_match, self.character_match,
+        )
+    }
+}
 impl fmt::Display for Solution {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -346,16 +464,6 @@ fn get_user_input(buffer: &mut String) -> &str {
     }
 }
 
-fn main2() {
-    let game = Game::new(
-        ROOM_NAMES.to_vec(),
-        ITEM_NAMES.to_vec(),
-        NPC_NAMES.to_vec(),
-        Entity::new("You".to_owned()),
-    );
-    println!("{:#?}", game.solution);
-}
-
 macro_rules! rc {
     ($expression:expr) => {
         Rc::clone(&$expression.as_ref().unwrap())
@@ -369,7 +477,7 @@ fn main() {
     print_center("You are currently in:");
     println!();
 
-    let n_clue: usize = 0;
+    let mut n_clue: usize = 0;
 
     let mut termbuf = String::new();
 
@@ -379,12 +487,6 @@ fn main() {
         NPC_NAMES.to_vec(),
         Entity::new("You".to_owned()),
     );
-
-    game.current_room
-        .as_mut()
-        .unwrap()
-        .borrow_mut()
-        .push_item(game.game_items.remove(0));
 
     look(rc!(game.current_room));
 
@@ -405,191 +507,145 @@ fn main() {
             look(rc!(game.current_room));
         } else if buffer.eq("go") {
             // inner loop for accepting direction
+            go(&mut termbuf, &mut game);
+            look(rc!(game.current_room));
+        } else if buffer.eq("take") {
+            let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
+            let item_list = &mut curr_room_ref.item_list;
+            if item_list.is_empty() {
+                println!("No items to take in the room!");
+            } else {
+                loop {
+                    println!("Items in {}:", curr_room_ref.name);
+                    println!(
+                        "{}\n",
+                        Entity::entity_list_as_string(
+                            &curr_room_ref.item_list,
+                            "ERROR: Unreachable"
+                        )
+                    );
+                    println!("Which item would you like to take?");
+                    termbuf.clear();
+                    buffer = get_user_input(&mut termbuf);
+
+                    let result = Entity::move_entity_by_name(
+                        buffer,
+                        &mut curr_room_ref.item_list,
+                        &mut game.inventory,
+                        "Item does not exist",
+                    );
+                    match result {
+                        Ok(_) => (),
+                        Err(message) => {
+                            println!("{}", message);
+                            continue;
+                        }
+                    }
+                    println!("Item Taken!");
+                    break;
+                }
+            }
+        } else if buffer.eq("drop") {
+            if game.inventory.is_empty() {
+                println!("No items to take in the room!");
+            } else {
+                let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
+                loop {
+                    println!(" Items in inventory:");
+                    println!(
+                        "{}\n",
+                        Entity::entity_list_as_string(&game.inventory, "ERROR: Unreachable")
+                    );
+                    println!("Which item would you like to take?");
+                    termbuf.clear();
+                    buffer = get_user_input(&mut termbuf);
+
+                    let result = Entity::move_entity_by_name(
+                        buffer,
+                        &mut game.inventory,
+                        &mut curr_room_ref.item_list,
+                        "Item does not exist",
+                    );
+                    match result {
+                        Ok(_) => (),
+                        Err(message) => {
+                            println!("{}", message);
+                            continue;
+                        }
+                    }
+                    println!("Item Dropped!");
+                    break;
+                }
+            }
+        } else if buffer.eq("inventory") {
+            println!(
+                "Items in inventory: {}",
+                Entity::entity_list_as_string(&game.inventory, "No items in inventory!")
+            );
+        } else if buffer.eq("clue") {
+            // inner loop for clue command sequence
             loop {
-                println!("Enter north, south, east, or west:");
+                print!("Call a character to the room: ");
+                println!(
+                    "{}",
+                    Entity::entity_list_as_string(&game.npcs, "ERROR: No characters.")
+                );
+
                 termbuf.clear();
                 buffer = get_user_input(&mut termbuf);
 
-                let direction: Direction = get_direction(buffer);
-                let new_room: Option<Rc<RefCell<Room>>>;
+                let room = game.board.find_room_for_character_by_name(buffer);
 
+                if room.is_none() {
+                    println!("Specified character does not exist!");
+                    continue;
+                }
+
+                let room = room.unwrap();
+
+                if !Rc::ptr_eq(&room, game.current_room.as_ref().unwrap()) {
+                    Entity::move_entity_by_name(
+                        buffer,
+                        &mut room.borrow_mut().character_list,
+                        &mut game
+                            .current_room
+                            .as_ref()
+                            .unwrap()
+                            .borrow_mut()
+                            .character_list,
+                        "ERROR: Failed to move",
+                    )
+                    .ok()
+                    .unwrap();
+                }
+
+                let win_state: WinningState = game.get_win_state();
+
+                n_clue += 1;
+
+                println!("{}", win_state);
+
+                if matches!(win_state.room_match, State::Match)
+                    && matches!(win_state.item_match, State::Match)
+                    && matches!(win_state.character_match, State::Match)
                 {
-                    let this_room = game.current_room.as_ref().unwrap().borrow();
-
-                    let new_room_ref = match direction {
-                        Direction::North => this_room.north.as_ref(),
-                        Direction::South => this_room.south.as_ref(),
-                        Direction::East => this_room.east.as_ref(),
-                        Direction::West => this_room.west.as_ref(),
-                        Direction::Invalid => {
-                            println!("\nRe-enter direction!\n");
-                            continue;
-                        }
-                    };
-
-                    new_room = new_room_ref.map(Rc::clone);
+                    println!("\nCONGRATULATIONS! You've found the right game_solution!\n");
+                    println!("GAME OVER!");
+                    exit(0);
                 }
 
-                match new_room {
-                    Some(room_ref) => {
-                        game.set_current_room(&room_ref);
-                    }
-                    None => {
-                        println!("\nCannot go that way!\n");
-                    }
+                if n_clue == MAX_CLUES {
+                    println!("SORRY, YOU COULDN'T FINISH THE GAME IN {} ATTEMPTS", n_clue);
+                    println!("GAME OVER!");
+                    exit(0);
                 }
+
+                println!("{} ATTEMPT(S) REMAINING\n", MAX_CLUES - n_clue);
                 break;
             }
-            look(rc!(game.current_room));
+        } else {
+            println!("Invalid command! Use `help` to display available commands.\n");
         }
-        //         else if(compare_strings(buffer, "take")) {
-        //             if (currentRoom->item_list == NULL ) {
-        //                 print!("No items to take in the room!\n");
-        //             }
-        //             else {
-        //                 // inner loop to specify which item to take
-        //                 while(1) {
-        //                     print!("Which item would you like to take?\n");
-        //                     print!("Items in %s: ", currentRoom->name);
-        //                     print_item_list(currentRoom->item_list);
-        //                     println!();
-        //                     get_user_input(&buffer, &bufsize);
-
-        //                     Item * taken_item;
-        //                     // take() returns NULL if string in buffer does not match any item in the room
-        //                     if ( (taken_item = take(currentRoom, buffer)) != NULL) {
-        //                         drop_item_into_inventory(taken_item);
-        //                         print!("\nItem Taken!\n");
-        //                         break;
-        //                     }
-        //                     else {
-        //                         print!("\nItem does not exist!\n");
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //         else if(compare_strings(buffer, "drop")) {
-        //             if (avatar.inventory == NULL ) {
-        //                 print!("No items in the inventory!\n");
-        //             }
-        //             else {
-        //                 // inner loop to specify which item to drop
-        //                 while(1) {
-        //                     print!("Which item would you like to drop?\n");
-        //                     print_inventory(avatar.inventory);
-        //                     get_user_input(&buffer, &bufsize);
-
-        //                     Item * dropped_item;
-        //                     // drop() returns NULL if string in buffer does not match any item in the inventory
-        //                     if ( (dropped_item = remove_item_from_inventory(buffer) ) != NULL) {
-        //                         drop(currentRoom, dropped_item);
-        //                         print!("\nItem Dropped!\n");
-        //                         break;
-        //                     }
-        //                     else {
-        //                         print!("\nItem does not exist in your inventory!\n\n");
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //         else if(compare_strings(buffer, "inventory")) {
-        //             print_inventory(avatar.inventory);
-        //         }
-        //         else if(compare_strings(buffer, "clue")) {
-        //             // inner loop for clue command sequence
-        //             while(1) {
-        //                 print!("Call a character to the room: ");
-        //                 print_characters_array();
-        //                 get_user_input(&buffer, &bufsize);
-
-        //                 Room * char_room;
-
-        //                 // find_room_for_character() returns NULL if no character with the name in the buffer exists
-        //                 if ( (char_room = find_room_for_character(buffer)) != NULL) {
-        //                     Character * called_character = remove_character_from_room(char_room, buffer);
-        //                     add_character_to_room(currentRoom, called_character);
-
-        //                     ++n_clue;
-
-        //                     println!();
-
-        //                     int has_won_game = check_winning_state(currentRoom, avatar.inventory);
-        //                     if (has_won_game) {
-        //                         print!("\nCONGRATULATIONS! You've found the right game_solution!\n\n");
-        //                         print!("GAME OVER!\n");
-        //                         free_memory();
-        //                         exit(0);
-        //                     }
-        //                     else {
-        //                         if (n_clue==MAX_CLUES) {
-        //                             print!("\nSORRY! You've couldn't finish the game in %d clues!\n\n", MAX_CLUES);
-        //                             print!("GAME OVER!\n");
-        //                             free_memory();
-        //                             exit(0);
-        //                         }
-        //                     }
-        //                     break;
-        //                 }
-        //                 else {
-        //                     print!("\nSpecified character does not exist!\n\n");
-        //                 }
-        //             }
-        //         }
-        //         else {
-        //             print!("Invalid command! Use help to display available commands.\n");
-        //         }
-        //         println!();
-        //     }
-
-        // }
-
-        // /*
-        // Accepts a pointer to a char * buffer and a pointer the the size of the buffer
-        // User input is accepted and put into the buffer; '\n' at the end of the input is removed
-        // */
-        // void get_user_input(char ** buffer, size_t * bufsize) {
-        //     getline(buffer, bufsize, stdin);
-        //     (*buffer)[strcspn(*bufferln, )] = (char)'\0';   // removes extra \n from user input
-        // }
-
-        // /*
-        // Accepts a pointer to a struct Room, and a pointer to a struct Item
-        // Checks if the fields in game_solution match the associated fields in the inputs
-        // Return 0 for losing state and 1 for winning state
-        // */
-        // int check_winning_state(Room * currentRoom, Item * inventory) {
-        //     int win_flag = 0;
-
-        //     if (currentRoom == game_solution.room) {
-        //         win_flag++;
-        //         print!("ROOM MATCH!\n");
-        //     }
-        //     else {
-        //         print!("INCORRECT ROOM!\n");
-        //     }
-
-        //     // checks if winning item is in the room OR in the inventory
-        //     if (check_item_in_item_list(inventory, game_solution.item->name) ||
-        //         check_item_in_item_list(currentRoom->item_list, game_solution.item->name)) {
-        //             win_flag++;
-        //             print!("ITEM MATCH!\n");
-        //     }
-        //     else {
-        //         print!("WRONG ITEM!\n");
-        //     }
-
-        //     if (is_character_in_room(currentRoom->character_list, game_solution.character->name)) {
-        //         win_flag++;
-        //         print!("CHARACTER MATCH!\n");
-        //     }
-        //     else {
-        //         print!("WRONG CHARACTER!\n");
-        //     }
-
-        //     if (win_flag==3)
-        //         return 1;
-        //     if (win_flag==0) {
-        //         print!("NOT A VALID GUESS!\n");
     }
 }
 

@@ -1,3 +1,5 @@
+pub static MAX_CLUES: usize = 10;
+
 pub static ROOM_NAMES: [&str; 9] = [
     "Drawing Room",
     "Backyard",

@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{config::PRINT_WIDTH, help_menus as menu, Room};
+use crate::{
+    config::PRINT_WIDTH, get_direction, get_user_input, help_menus as menu, Direction, Game, Room,
+};
 
 fn print_hex_array(vec: Vec<u8>) {
     // for char in vec.iter() {
@@ -48,4 +50,41 @@ pub(crate) fn list() {
 
 pub(crate) fn look(room: Rc<RefCell<Room>>) {
     print_room(room);
+}
+pub(crate) fn go(termbuf: &mut String, game: &mut Game) {
+    loop {
+        println!("Enter north, south, east, or west:");
+        termbuf.clear();
+        let buffer = get_user_input(termbuf);
+
+        let direction: Direction = get_direction(buffer);
+        let new_room: Option<Rc<RefCell<Room>>>;
+
+        {
+            let this_room = game.current_room.as_ref().unwrap().borrow();
+
+            let new_room_ref = match direction {
+                Direction::North => this_room.north.as_ref(),
+                Direction::South => this_room.south.as_ref(),
+                Direction::East => this_room.east.as_ref(),
+                Direction::West => this_room.west.as_ref(),
+                Direction::Invalid => {
+                    println!("\nRe-enter direction!\n");
+                    continue;
+                }
+            };
+
+            new_room = new_room_ref.map(Rc::clone);
+        }
+
+        match new_room {
+            Some(room_ref) => {
+                game.set_current_room(&room_ref);
+            }
+            None => {
+                println!("\nCannot go that way!\n");
+            }
+        }
+        break;
+    }
 }
