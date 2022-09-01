@@ -46,7 +46,7 @@ pub(crate) fn print_center(text: &str) {
     println!("{:indent$}{}", "", text, indent = padlen);
 }
 
-fn print_room(room: Rc<RefCell<Room>>) {
+fn print_room(room: &RefCell<Room>) {
     let room = room.borrow();
     print_demarkcation_line();
     print_center(&room.name);
@@ -74,7 +74,7 @@ pub(crate) fn list() {
     print_hex_array(menu::get_list_array());
 }
 
-pub(crate) fn look(room: Rc<RefCell<Room>>) {
+pub(crate) fn look(room: &RefCell<Room>) {
     print_room(room);
 }
 pub(crate) fn go(termbuf: &mut String, game: &mut Game) {

@@ -14,9 +14,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
-macro_rules! rc {
+macro_rules! room {
     ($expression:expr) => {
-        Rc::clone(&$expression.as_ref().unwrap())
+        $expression.as_ref().unwrap().as_ref()
     };
 }
 
@@ -38,7 +38,7 @@ fn main() {
         Entity::new("You".to_owned()),
     );
 
-    look(rc!(game.current_room));
+    look(room!(game.current_room));
 
     loop {
         println!("Enter a command or type help:");
@@ -54,11 +54,11 @@ fn main() {
         } else if buffer.eq("game_solution") {
             println!("{}", game.solution);
         } else if buffer.eq("look") {
-            look(rc!(game.current_room));
+            look(room!(game.current_room));
         } else if buffer.eq("go") {
             // inner loop for accepting direction
             go(&mut termbuf, &mut game);
-            look(rc!(game.current_room));
+            look(room!(game.current_room));
         } else if buffer.eq("take") {
             let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
             let item_list = &mut curr_room_ref.item_list;
