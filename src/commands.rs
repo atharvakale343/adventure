@@ -77,13 +77,12 @@ pub(crate) fn list() {
 pub(crate) fn look(room: &RefCell<Room>) {
     print_room(room);
 }
-pub(crate) fn go(termbuf: &mut String, game: &mut Game) {
+pub(crate) fn go(game: &mut Game) {
     loop {
         println!("Enter north, south, east, or west:");
-        termbuf.clear();
-        let buffer = get_user_input(termbuf);
+        let buffer = get_user_input();
 
-        let direction: Direction = Direction::get_direction(buffer);
+        let direction: Direction = Direction::get_direction(&buffer);
         let new_room: Option<Rc<RefCell<Room>>>;
 
         {

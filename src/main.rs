@@ -29,8 +29,6 @@ fn main() {
 
     let mut n_clue: usize = 0;
 
-    let mut termbuf = String::new();
-
     let mut game = Game::new(
         ROOM_NAMES.to_vec(),
         ITEM_NAMES.to_vec(),
@@ -42,8 +40,7 @@ fn main() {
 
     loop {
         println!("Enter a command or type help:");
-        termbuf.clear();
-        let mut buffer = get_user_input(&mut termbuf);
+        let mut buffer = get_user_input();
 
         println!();
 
@@ -57,7 +54,7 @@ fn main() {
             look(room!(game.current_room));
         } else if buffer.eq("go") {
             // inner loop for accepting direction
-            go(&mut termbuf, &mut game);
+            go(&mut game);
             look(room!(game.current_room));
         } else if buffer.eq("take") {
             let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
@@ -75,11 +72,10 @@ fn main() {
                         )
                     );
                     println!("Which item would you like to take?");
-                    termbuf.clear();
-                    buffer = get_user_input(&mut termbuf);
+                    buffer = get_user_input();
 
                     let result = Entity::move_entity_by_name(
-                        buffer,
+                        &buffer,
                         &mut curr_room_ref.item_list,
                         &mut game.inventory,
                         "Item does not exist",
@@ -107,11 +103,10 @@ fn main() {
                         Entity::entity_list_as_string(&game.inventory, "ERROR: Unreachable")
                     );
                     println!("Which item would you like to take?");
-                    termbuf.clear();
-                    buffer = get_user_input(&mut termbuf);
+                    buffer = get_user_input();
 
                     let result = Entity::move_entity_by_name(
-                        buffer,
+                        &buffer,
                         &mut game.inventory,
                         &mut curr_room_ref.item_list,
                         "Item does not exist",
@@ -141,10 +136,9 @@ fn main() {
                     Entity::entity_list_as_string(&game.npcs, "ERROR: No characters.")
                 );
 
-                termbuf.clear();
-                buffer = get_user_input(&mut termbuf);
+                buffer = get_user_input();
 
-                let room = game.board.find_room_for_character_by_name(buffer);
+                let room = game.board.find_room_for_character_by_name(&buffer);
 
                 if room.is_none() {
                     println!("Specified character does not exist!");
@@ -155,7 +149,7 @@ fn main() {
 
                 if !Rc::ptr_eq(&room, game.current_room.as_ref().unwrap()) {
                     Entity::move_entity_by_name(
-                        buffer,
+                        &buffer,
                         &mut room.borrow_mut().character_list,
                         &mut game
                             .current_room
@@ -627,9 +621,10 @@ impl fmt::Display for Solution {
     }
 }
 
-fn get_user_input(buffer: &mut String) -> &str {
-    match io::stdin().read_line(buffer) {
-        Ok(_) => buffer.trim(),
+fn get_user_input() -> String {
+    let mut buffer = String::new();
+    match io::stdin().read_line(&mut buffer) {
+        Ok(_) => buffer.trim().to_owned(),
         Err(error) => {
             println!("error: {}", error);
             exit(1);
