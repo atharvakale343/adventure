@@ -14,6 +14,190 @@ use std::fmt;
 use std::rc::Rc;
 use std::{io, process::exit};
 
+macro_rules! rc {
+    ($expression:expr) => {
+        Rc::clone(&$expression.as_ref().unwrap())
+    };
+}
+
+fn main() {
+    println!("\n");
+    print_center("Welcome to Clue!");
+    println!();
+    print_center("You are currently in:");
+    println!();
+
+    let mut n_clue: usize = 0;
+
+    let mut termbuf = String::new();
+
+    let mut game = Game::new(
+        ROOM_NAMES.to_vec(),
+        ITEM_NAMES.to_vec(),
+        NPC_NAMES.to_vec(),
+        Entity::new("You".to_owned()),
+    );
+
+    look(rc!(game.current_room));
+
+    loop {
+        println!("Enter a command or type help:");
+        termbuf.clear();
+        let mut buffer = get_user_input(&mut termbuf);
+
+        println!();
+
+        if buffer.eq("help") {
+            help();
+        } else if buffer.eq("list") {
+            list();
+        } else if buffer.eq("game_solution") {
+            println!("{}", game.solution);
+        } else if buffer.eq("look") {
+            look(rc!(game.current_room));
+        } else if buffer.eq("go") {
+            // inner loop for accepting direction
+            go(&mut termbuf, &mut game);
+            look(rc!(game.current_room));
+        } else if buffer.eq("take") {
+            let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
+            let item_list = &mut curr_room_ref.item_list;
+            if item_list.is_empty() {
+                println!("No items to take in the room!");
+            } else {
+                loop {
+                    println!("Items in {}:", curr_room_ref.name);
+                    println!(
+                        "{}\n",
+                        Entity::entity_list_as_string(
+                            &curr_room_ref.item_list,
+                            "ERROR: Unreachable"
+                        )
+                    );
+                    println!("Which item would you like to take?");
+                    termbuf.clear();
+                    buffer = get_user_input(&mut termbuf);
+
+                    let result = Entity::move_entity_by_name(
+                        buffer,
+                        &mut curr_room_ref.item_list,
+                        &mut game.inventory,
+                        "Item does not exist",
+                    );
+                    match result {
+                        Ok(_) => (),
+                        Err(message) => {
+                            println!("{}", message);
+                            continue;
+                        }
+                    }
+                    println!("Item Taken!");
+                    break;
+                }
+            }
+        } else if buffer.eq("drop") {
+            if game.inventory.is_empty() {
+                println!("No items to take in the room!");
+            } else {
+                let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
+                loop {
+                    println!(" Items in inventory:");
+                    println!(
+                        "{}\n",
+                        Entity::entity_list_as_string(&game.inventory, "ERROR: Unreachable")
+                    );
+                    println!("Which item would you like to take?");
+                    termbuf.clear();
+                    buffer = get_user_input(&mut termbuf);
+
+                    let result = Entity::move_entity_by_name(
+                        buffer,
+                        &mut game.inventory,
+                        &mut curr_room_ref.item_list,
+                        "Item does not exist",
+                    );
+                    match result {
+                        Ok(_) => (),
+                        Err(message) => {
+                            println!("{}", message);
+                            continue;
+                        }
+                    }
+                    println!("Item Dropped!");
+                    break;
+                }
+            }
+        } else if buffer.eq("inventory") {
+            println!(
+                "Items in inventory: {}",
+                Entity::entity_list_as_string(&game.inventory, "No items in inventory!")
+            );
+        } else if buffer.eq("clue") {
+            // inner loop for clue command sequence
+            loop {
+                print!("Call a character to the room: ");
+                println!(
+                    "{}",
+                    Entity::entity_list_as_string(&game.npcs, "ERROR: No characters.")
+                );
+
+                termbuf.clear();
+                buffer = get_user_input(&mut termbuf);
+
+                let room = game.board.find_room_for_character_by_name(buffer);
+
+                if room.is_none() {
+                    println!("Specified character does not exist!");
+                    continue;
+                }
+
+                let room = room.unwrap();
+
+                if !Rc::ptr_eq(&room, game.current_room.as_ref().unwrap()) {
+                    Entity::move_entity_by_name(
+                        buffer,
+                        &mut room.borrow_mut().character_list,
+                        &mut game
+                            .current_room
+                            .as_ref()
+                            .unwrap()
+                            .borrow_mut()
+                            .character_list,
+                        "ERROR: Failed to move",
+                    )
+                    .ok()
+                    .unwrap();
+                }
+
+                let win_state: WinningState = game.get_win_state();
+
+                n_clue += 1;
+
+                println!("{}", win_state);
+
+                if matches!(win_state.room_match, State::Match)
+                    && matches!(win_state.item_match, State::Match)
+                    && matches!(win_state.character_match, State::Match)
+                {
+                    println!("\nCONGRATULATIONS! You've found the right game_solution!\n");
+                    println!("GAME OVER!");
+                    exit(0);
+                }
+
+                if n_clue == MAX_CLUES {
+                    println!("SORRY, YOU COULDN'T FINISH THE GAME IN {} ATTEMPTS", n_clue);
+                    println!("GAME OVER!");
+                    exit(0);
+                }
+
+                println!("{} ATTEMPT(S) REMAINING\n", MAX_CLUES - n_clue);
+                break;
+            }
+        } else {
+            println!("Invalid command! Use `help` to display available commands.\n");
+        }
+    }
+}
 struct WinningState {
     room_match: State,
     item_match: State,
@@ -449,191 +633,6 @@ fn get_user_input(buffer: &mut String) -> &str {
         Err(error) => {
             println!("error: {}", error);
             exit(1);
-        }
-    }
-}
-
-macro_rules! rc {
-    ($expression:expr) => {
-        Rc::clone(&$expression.as_ref().unwrap())
-    };
-}
-
-fn main() {
-    println!("\n");
-    print_center("Welcome to Clue!");
-    println!();
-    print_center("You are currently in:");
-    println!();
-
-    let mut n_clue: usize = 0;
-
-    let mut termbuf = String::new();
-
-    let mut game = Game::new(
-        ROOM_NAMES.to_vec(),
-        ITEM_NAMES.to_vec(),
-        NPC_NAMES.to_vec(),
-        Entity::new("You".to_owned()),
-    );
-
-    look(rc!(game.current_room));
-
-    loop {
-        println!("Enter a command or type help:");
-        termbuf.clear();
-        let mut buffer = get_user_input(&mut termbuf);
-
-        println!();
-
-        if buffer.eq("help") {
-            help();
-        } else if buffer.eq("list") {
-            list();
-        } else if buffer.eq("game_solution") {
-            println!("{}", game.solution);
-        } else if buffer.eq("look") {
-            look(rc!(game.current_room));
-        } else if buffer.eq("go") {
-            // inner loop for accepting direction
-            go(&mut termbuf, &mut game);
-            look(rc!(game.current_room));
-        } else if buffer.eq("take") {
-            let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
-            let item_list = &mut curr_room_ref.item_list;
-            if item_list.is_empty() {
-                println!("No items to take in the room!");
-            } else {
-                loop {
-                    println!("Items in {}:", curr_room_ref.name);
-                    println!(
-                        "{}\n",
-                        Entity::entity_list_as_string(
-                            &curr_room_ref.item_list,
-                            "ERROR: Unreachable"
-                        )
-                    );
-                    println!("Which item would you like to take?");
-                    termbuf.clear();
-                    buffer = get_user_input(&mut termbuf);
-
-                    let result = Entity::move_entity_by_name(
-                        buffer,
-                        &mut curr_room_ref.item_list,
-                        &mut game.inventory,
-                        "Item does not exist",
-                    );
-                    match result {
-                        Ok(_) => (),
-                        Err(message) => {
-                            println!("{}", message);
-                            continue;
-                        }
-                    }
-                    println!("Item Taken!");
-                    break;
-                }
-            }
-        } else if buffer.eq("drop") {
-            if game.inventory.is_empty() {
-                println!("No items to take in the room!");
-            } else {
-                let mut curr_room_ref = game.current_room.as_mut().unwrap().borrow_mut();
-                loop {
-                    println!(" Items in inventory:");
-                    println!(
-                        "{}\n",
-                        Entity::entity_list_as_string(&game.inventory, "ERROR: Unreachable")
-                    );
-                    println!("Which item would you like to take?");
-                    termbuf.clear();
-                    buffer = get_user_input(&mut termbuf);
-
-                    let result = Entity::move_entity_by_name(
-                        buffer,
-                        &mut game.inventory,
-                        &mut curr_room_ref.item_list,
-                        "Item does not exist",
-                    );
-                    match result {
-                        Ok(_) => (),
-                        Err(message) => {
-                            println!("{}", message);
-                            continue;
-                        }
-                    }
-                    println!("Item Dropped!");
-                    break;
-                }
-            }
-        } else if buffer.eq("inventory") {
-            println!(
-                "Items in inventory: {}",
-                Entity::entity_list_as_string(&game.inventory, "No items in inventory!")
-            );
-        } else if buffer.eq("clue") {
-            // inner loop for clue command sequence
-            loop {
-                print!("Call a character to the room: ");
-                println!(
-                    "{}",
-                    Entity::entity_list_as_string(&game.npcs, "ERROR: No characters.")
-                );
-
-                termbuf.clear();
-                buffer = get_user_input(&mut termbuf);
-
-                let room = game.board.find_room_for_character_by_name(buffer);
-
-                if room.is_none() {
-                    println!("Specified character does not exist!");
-                    continue;
-                }
-
-                let room = room.unwrap();
-
-                if !Rc::ptr_eq(&room, game.current_room.as_ref().unwrap()) {
-                    Entity::move_entity_by_name(
-                        buffer,
-                        &mut room.borrow_mut().character_list,
-                        &mut game
-                            .current_room
-                            .as_ref()
-                            .unwrap()
-                            .borrow_mut()
-                            .character_list,
-                        "ERROR: Failed to move",
-                    )
-                    .ok()
-                    .unwrap();
-                }
-
-                let win_state: WinningState = game.get_win_state();
-
-                n_clue += 1;
-
-                println!("{}", win_state);
-
-                if matches!(win_state.room_match, State::Match)
-                    && matches!(win_state.item_match, State::Match)
-                    && matches!(win_state.character_match, State::Match)
-                {
-                    println!("\nCONGRATULATIONS! You've found the right game_solution!\n");
-                    println!("GAME OVER!");
-                    exit(0);
-                }
-
-                if n_clue == MAX_CLUES {
-                    println!("SORRY, YOU COULDN'T FINISH THE GAME IN {} ATTEMPTS", n_clue);
-                    println!("GAME OVER!");
-                    exit(0);
-                }
-
-                println!("{} ATTEMPT(S) REMAINING\n", MAX_CLUES - n_clue);
-                break;
-            }
-        } else {
-            println!("Invalid command! Use `help` to display available commands.\n");
         }
     }
 }
